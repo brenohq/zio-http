@@ -43,15 +43,13 @@ object VerboseMiddleware {
         .contramapZIO[R1, E1, Request] { request =>
           for {
             _ <- Console.printLine(s"${request.method} ${request.path} ${request.version}")
-            _ <- ZIO.foreach(request.headers.toList) { header =>
-              Console.printLine(s"> ${header._1} - ${header._2}")
-            }
+            _ <- ZIO.foreachDiscard(request.headers.toList) { header => Console.printLine(s"> ${header._1} - ${header._2}") }
           } yield request
         }
         .mapZIO[R1, E1, Response](r =>
           for {
             _ <- Console.printLine(s"< ${r.status}")
-            _ <- ZIO.foreach(r.headers.toList) { header => Console.printLine(s"< ${header._1} - ${header._2}") }
+            _ <- ZIO.foreachDiscard(r.headers.toList)(header => Console.printLine(s"< ${header._1} - ${header._2}"))
           } yield r
         )
     }
