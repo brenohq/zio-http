@@ -1,4 +1,6 @@
+import zhttp.http.Method.{GET, POST}
 import zhttp.http._
+import zhttp.http.middleware.Cors.CorsConfig
 import zhttp.service.Server
 import zio._
 
@@ -8,14 +10,18 @@ object ZIOHTTP extends ZIOAppDefault {
 
   val app: Http[Any, Nothing, Request, Response] = Http.collect[Request] {
     case Method.GET -> !! / "owls" => Response.text("Hello owls!")
-  }
+  } @@ Middleware.csrfGenerate()
 
   val zApp: UHttpApp = Http.collectZIO[Request] {
     case Method.POST -> !! / "owls" =>
       Random.nextIntBetween(3, 5).map(n => Response.text("Hello " * n + ", owls!"))
-  }
+  } @@ Middleware.csrfValidate()
 
-  val combined = app ++ zApp
+  val authApp = Http.collect[Request] {
+    case Method.GET -> !! / "secret" / "owls" => Response.text("The password is 123!")
+  } @@ Middleware.basicAuth("brenohq", "123")
+
+  val combined =  app ++ zApp
 
   // default middleware
   val wrapped = combined @@ Middleware.debug
@@ -24,9 +30,24 @@ object ZIOHTTP extends ZIOAppDefault {
   // custom middleware
   val logging = combined @@ VerboseMiddleware.log
 
+  // CORS
+  val corsConfig = CorsConfig(
+    anyOrigin = false,
+    anyMethod = false,
+    allowedOrigins = s => s.equals("localhost"),
+    allowedMethods = Some(Set(GET, POST))
+  )
+
+  val corsEnabledHttp = combined @@ Middleware.cors(corsConfig) @@ VerboseMiddleware.log
+
+  // CSRF
+  // Middleware.csrfGenerate() and Middleware.csrfValidate()
+
+  // Authentication
+
   val httpProgram = for {
     _ <- Console.printLine(s"Starting server at port: $port")
-    + <- Server.start(port, logging)
+    + <- Server.start(port, authApp)
   } yield ()
 
   override def run: ZIO[Any, Throwable, Unit] = httpProgram
